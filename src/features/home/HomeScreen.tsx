@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { ArcadeBrand } from "../../ui/arcade/ArcadeBrand";
+import { InstallButton } from "../../pwa/InstallButton";
 import "./home.css";
 
 const previews = [
@@ -48,7 +49,7 @@ const previews = [
 const trainingGuide = {
   status: "Training guide",
   title: "How to play",
-  description: "Choose Note Rush, then start a round. Listen to each note and tap the matching piano key. Fast correct answers add up to 3 seconds. A wrong answer costs 2 seconds. Tap the timer to switch to endless practice. Your best score is saved on this device. Rotate to landscape to play.",
+  description: "Choose Note Rush, then start a round. Listen to each note and tap the matching piano key. Fast correct answers add up to 3 seconds. A wrong answer costs 2 seconds. Each timed round picks a sound. Tap the timer to choose one in endless practice. Your best score is saved on this device. Rotate to landscape to play.",
 };
 
 function Chevron() {
@@ -103,15 +104,18 @@ export function HomeScreen({
   }, [preview]);
 
   return (
-    <main className="home" aria-label="Pitch training home">
+    <main className="home" aria-label="Earcade training home">
       <header className="home-header">
         <ArcadeBrand subtitle="Ear training arcade" />
-        <button type="button" className="icon-button" aria-label="How to play" onClick={() => setPreview(trainingGuide)}>
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M9.1 9a3 3 0 0 1 5.9.6c0 2-3 2.5-3 4.4M12 17h.01" strokeLinecap="round" />
-          </svg>
-        </button>
+        <div className="home-actions">
+          <InstallButton />
+          <button type="button" className="icon-button" aria-label="How to play" onClick={() => setPreview(trainingGuide)}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M9.1 9a3 3 0 0 1 5.9.6c0 2-3 2.5-3 4.4M12 17h.01" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <section className="home-intro">

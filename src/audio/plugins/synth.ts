@@ -1,4 +1,5 @@
 import type { SoundEvent, SoundPlugin } from "../types";
+import { playSynthLabCue } from "../synthLabCue";
 
 function midiToFreq(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
@@ -11,6 +12,8 @@ const PIANO_PARTIALS = [
   [4, 0.025, 0.19],
   [5, 0.012, 0.13],
 ];
+const PIANO_STOP_MARGIN = 0.025;
+export const PIANO_CUE_SECONDS = Math.max(...PIANO_PARTIALS.map(([, , decay]) => decay)) + PIANO_STOP_MARGIN;
 
 function playPiano(ctx: AudioContext, master: GainNode, midi: number, at: number) {
   const frequency = midiToFreq(midi);
@@ -32,7 +35,7 @@ function playPiano(ctx: AudioContext, master: GainNode, midi: number, at: number
       gain.disconnect();
     };
     voice.start(at);
-    voice.stop(at + decay + 0.025);
+    voice.stop(at + decay + PIANO_STOP_MARGIN);
   }
 
   return () => {
@@ -44,11 +47,14 @@ function playPiano(ctx: AudioContext, master: GainNode, midi: number, at: number
 export const SynthPlugin: SoundPlugin = {
   id: "synth",
   label: "Basic Synth",
-  handles: ["note", "interval", "feedback"],
+  handles: ["note", "interval", "feedback", "synth-lab-cue"],
   init() {
     // no-op (stateless)
   },
   play(ctx, master, event: SoundEvent) {
+    if (event.type === "synth-lab-cue") {
+      return playSynthLabCue(ctx, master, event.midi, event.patch, event.holdSeconds, event.onStart);
+    }
     const at = event.at ?? ctx.currentTime;
 
     if (event.type === "feedback") {
@@ -72,7 +78,6 @@ export const SynthPlugin: SoundPlugin = {
       if (event.timbre === "piano") {
         return playPiano(ctx, master, event.midi, at);
       }
-
       const duration = event.duration ?? 0.5;
       const wave = event.wave ?? "triangle";
 

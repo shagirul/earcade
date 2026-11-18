@@ -4,17 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
     <meta name="theme-color" content="#101012" />
-    <title>Pitch — Synth Lab</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icons/earcade.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <title>Earcade — Synth Lab</title>
     <link rel="stylesheet" href="./synth-lab.css" />
   </head>
   <body>
     <div class="app">
       <div class="instrument-top">
         <header class="top">
-          <a class="brand lab-home" href="../" aria-label="Back to Pitch Arcade">
+          <a class="brand lab-home" href="../" aria-label="Back to Earcade">
             <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="m14 5-7 7 7 7M7 12h14"/></svg></span>
             <div>
-              <h1>PITCH<span class="brand-dot">.</span></h1>
+              <h1>EARCADE<span class="brand-dot">.</span></h1>
               <div class="eyebrow">
                 Synth lab / Sound design
               </div>
@@ -81,6 +84,7 @@
                 </div>
                 <div class="controls two" id="ampControls">
                 </div>
+                <p class="envelope-behavior" id="ampBehavior"></p>
               </div>
             </div>
             <div class="panel">

@@ -507,3 +507,37 @@
     font-size: 9px;
   }
 }
+
+.home-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.install-button {
+  min-height: var(--touch);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel);
+  color: var(--accent);
+  border: 1px solid var(--amber-700);
+  padding: 0 10px;
+  clip-path: var(--shape-sm);
+  font: 700 11px var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: .035em;
+}
+
+.install-button:hover { background: var(--elevated); }
+.install-button:focus-visible { outline-offset: -4px; }
+.install-button svg { width: 16px; height: 16px; }
+.install-dialog { margin: auto; }
+.install-dialog .primary { width: 100%; margin-bottom: var(--s-2); }
+
+@media (max-width: 390px) {
+  .home-header .brand-name { font-size: 28px; }
+  .home-header .brand-sub { font-size: 8px; }
+  .home-actions { gap: 4px; }
+  .install-button { padding: 0 6px; }
+}

@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { Smartphone } from "lucide-react";
+import { audio } from "../../audio";
 import { PIANO_OCTAVE } from "../../game/stages";
 import { cn } from "../../lib/cn";
-import { ArcadeBrand } from "../../ui/arcade/ArcadeBrand";
 import { Piano } from "../drill/Piano";
-import { ROUND_SECONDS, useNoteRush } from "./useNoteRush";
+import { HOLD_CHOICES, type RushSound } from "./soundOptions";
+import { ROUND_SECONDS, useNoteRush, type CuePlayback } from "./useNoteRush";
 import "./noteRush.css";
 
 const SHORTCUTS = ["a", "w", "s", "e", "d", "f", "t", "g", "y", "h", "u", "j"];
@@ -120,6 +121,39 @@ function noteName(note: number) {
   return PIANO_OCTAVE[note].label.replace("#", "♯");
 }
 
+function ReplayButton({ cue, disabled, onClick }: { cue?: CuePlayback; disabled: boolean; onClick: () => void }) {
+  const progress = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    const fill = progress.current!;
+    fill.style.transform = "scaleX(0)";
+    fill.dataset.phase = cue ? "playing" : "idle";
+    if (!cue) return;
+    const { startedAt, duration } = cue;
+    let frame: number;
+
+    function draw() {
+      const played = Math.max(0, Math.min(1, (audio.currentTime - startedAt) / duration));
+      fill.style.transform = "scaleX(" + played + ")";
+      if (played < 1) frame = requestAnimationFrame(draw);
+      else fill.dataset.phase = "complete";
+    }
+
+    frame = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(frame);
+  }, [cue]);
+
+  return (
+    <button type="button" className="replay cue-replay" disabled={disabled} onClick={onClick}>
+      <span ref={progress} className="cue-progress" aria-hidden="true" />
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 9h4l5-4v14l-5-4H3zM16 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12" />
+      </svg>
+      <span>Play note again</span>
+    </button>
+  );
+}
+
 export function NoteRushScreen({
   onExit,
   onComplete,
@@ -128,11 +162,24 @@ export function NoteRushScreen({
   onComplete: (score: number, attempts: number) => void;
 }) {
   const landscape = useSyncExternalStore(subscribeToOrientation, isLandscapeViewport);
-  const { round, seconds, best, starting, audioError, pressed, start, togglePractice, choose, replay, confirmExit, resume } =
-    useNoteRush(landscape, onComplete);
+  const {
+    round, seconds, best, sounds, holdSeconds, cue, starting, audioError, pressed,
+    start, togglePractice, changePracticeSound, changeHoldSeconds, choose, replay, confirmExit, resume,
+  } = useNoteRush(landscape, onComplete);
+  const soundGroups = useMemo(() => {
+    const groups = new Map<string, RushSound[]>();
+    for (const sound of sounds) {
+      const group = groups.get(sound.group);
+      if (group) group.push(sound);
+      else groups.set(sound.group, [sound]);
+    }
+    return Array.from(groups);
+  }, [sounds]);
   const active = round.phase === "active" ? round : undefined;
   const timed = active?.mode === "timed" ? active : undefined;
-  const endless = active?.mode === "endless";
+  const practice = active?.mode === "endless" ? active : undefined;
+  const endless = !!practice;
+  const canSetHold = round.phase === "ready" || (practice?.sound.patch?.amp.s ?? 0) > 0;
   const finished = round.phase === "finished" ? round : undefined;
   const feedback = active?.feedback;
   const correct = !!feedback && feedback.picked === active?.target;
@@ -145,6 +192,7 @@ export function NoteRushScreen({
   let detail = "Listen to a note and tap the matching key.";
   if (active || finished) {
     eyebrow = endless ? "Endless practice" : "Listen and identify";
+    if (timed) eyebrow += " · " + timed.sound.label;
     message = "Which note is it?";
     detail = "Tap the matching piano key.";
   }
@@ -166,6 +214,7 @@ export function NoteRushScreen({
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
+      if (event.target instanceof HTMLSelectElement) return;
       if (finished || timed?.confirmingExit) return;
       if (event.key === "Escape") {
         if (timed) confirmExit();
@@ -193,7 +242,7 @@ export function NoteRushScreen({
       <main className="rotate-screen">
         <div className="panel rotate-panel">
           <Smartphone aria-hidden="true" className="rotate-symbol" size={38} />
-          <p className="eyebrow">PITCH / NOTE RUSH</p>
+          <p className="eyebrow">EARCADE / NOTE RUSH</p>
           <h1 className="display">Rotate to landscape</h1>
           <p className="detail">Turn your device sideways to {active ? "resume the round" : "play"}.</p>
           <button type="button" className="secondary" onClick={onExit}>Back to exercises</button>
@@ -204,10 +253,45 @@ export function NoteRushScreen({
 
   return (
     <div className="game-shell">
-      <main className="app" aria-label="Pitch note guessing game">
+      <main className="app" aria-label="Earcade note guessing game">
         <header className="top">
-          <ArcadeBrand subtitle="Note rush" />
+          <div className="rush-heading">
+            <button
+              type="button"
+              className="exit back-control"
+              aria-label={timed ? "Back to exercises, end round" : "Back to exercises"}
+              onClick={timed ? confirmExit : onExit}
+              disabled={!!finished || (!!timed && seconds === 0)}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m14 5-7 7 7 7M7 12h14" />
+              </svg>
+            </button>
+            <div className="display rush-title">Note Rush</div>
+          </div>
           <div className="stats">
+            {practice && (
+              <label className="stat sound-stat">
+                <span className="stat-label">Sound</span>
+                <select value={practice.sound.id} onChange={(event) => changePracticeSound(event.currentTarget.value)}>
+                  {soundGroups.map(([group, options]) => (
+                    <optgroup key={group} label={group}>
+                      {options.map(sound => <option key={sound.id} value={sound.id}>{sound.label}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+            )}
+            {canSetHold && (
+              <label className="stat sound-stat hold-stat" title="Time before a sustained note is released">
+                <span className="stat-label">Hold</span>
+                <select value={holdSeconds} onChange={(event) => changeHoldSeconds(Number(event.currentTarget.value))}>
+                  {HOLD_CHOICES.map(duration => (
+                    <option key={duration} value={duration}>{duration}s</option>
+                  ))}
+                </select>
+              </label>
+            )}
             {!endless && <RoundCounter label="Score" value={timed?.score ?? finished?.score ?? 0} delta={Number(correct)} attempt={answeredAttempt} />}
             <RoundCounter
               label={endless ? "Endless" : "Time left"}
@@ -222,25 +306,6 @@ export function NoteRushScreen({
             />
             {!endless && <RoundCounter label="Best" value={best} />}
           </div>
-          {active ? (
-            <button
-              type="button"
-              className="exit"
-              aria-label={endless ? "Leave practice" : "End round"}
-              onClick={endless ? onExit : confirmExit}
-              disabled={!!timed && seconds === 0}
-            >
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="m6 6 12 12M18 6 6 18" />
-              </svg>
-            </button>
-          ) : !finished && (
-            <button type="button" className="exit" aria-label="Back to exercises" onClick={onExit}>
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="m14 5-7 7 7 7M7 12h14" />
-              </svg>
-            </button>
-          )}
         </header>
 
         <section className="prompt">
@@ -255,12 +320,7 @@ export function NoteRushScreen({
           </div>
           <div className="controls">
             {active || finished ? (
-              <button type="button" className="replay" disabled={!!feedback || !!finished} onClick={replay}>
-                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 9h4l5-4v14l-5-4H3zM16 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12" />
-                </svg>
-                Play note again
-              </button>
+              <ReplayButton cue={cue} disabled={!!feedback || !!finished} onClick={replay} />
             ) : (
               <button type="button" className="primary" ref={startButton} disabled={starting} onClick={start}>
                 <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">

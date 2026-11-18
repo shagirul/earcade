@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "Earcade",
+  "short_name": "Earcade",
+  "description": "Play Note Rush and design sounds in Synth Lab.",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#101012",
+  "background_color": "#101012",
+  "icons": [
+    { "src": "/icons/earcade-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/earcade-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/earcade-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "related_applications": [{ "platform": "webapp", "url": "/manifest.webmanifest", "id": "https://earcade-m6ja.vercel.app/" }],
+  "prefer_related_applications": false
+}

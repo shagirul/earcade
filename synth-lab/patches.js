@@ -1,3 +1,6 @@
+import { NOTE_RUSH_SOUNDS } from '../src/audio/noteRushSounds.ts';
+import { numericControls, tables } from './controlSpecs.js';
+
 export const TAU = 2 * Math.PI;
 export const clone = value => JSON.parse(JSON.stringify(value));
 export const defaultWave = () => Array.from({
@@ -101,20 +104,7 @@ const P = (name, cat, patch) => ({
   cat,
   patch: merge(clone(init), patch)
 });
-export const presets = [P('Init Patch', 'Basic', {}), P('Pure Sine', 'Basic', {
-  a: {
-    level: .8
-  },
-  filter: {
-    on: false
-  },
-  amp: {
-    a: .008,
-    d: .15,
-    s: 1,
-    r: .08
-  }
-}), P('Analog Saw', 'Basic', {
+export const presets = [P('Init Patch', 'Basic', {}), P(NOTE_RUSH_SOUNDS.sine.label, 'Basic', NOTE_RUSH_SOUNDS.sine.patch), P('Analog Saw', 'Basic', {
   a: {
     pos: .67
   },
@@ -125,11 +115,7 @@ export const presets = [P('Init Patch', 'Basic', {}), P('Pure Sine', 'Basic', {
   a: {
     pos: 1
   }
-}), P('Triangle Tone', 'Basic', {
-  a: {
-    pos: .33
-  }
-}), P('Deep 808', 'Bass', {
+}), P(NOTE_RUSH_SOUNDS.triangle.label, 'Basic', NOTE_RUSH_SOUNDS.triangle.patch), P('Deep 808', 'Bass', {
   a: {
     oct: -1,
     level: .75
@@ -570,30 +556,7 @@ export const presets = [P('Init Patch', 'Basic', {}), P('Pure Sine', 'Basic', {
     reverb: .7,
     delay: .25
   }
-}), P('Soft Pluck', 'Pluck', {
-  a: {
-    pos: .33
-  },
-  amp: {
-    a: .005,
-    d: .36,
-    s: 0,
-    r: .3
-  },
-  filter: {
-    cutoff: 2400,
-    env: 1.5
-  },
-  env: {
-    a: .005,
-    d: .14,
-    s: 0,
-    r: .1
-  },
-  fx: {
-    reverb: .19
-  }
-}), P('Crystal Drops', 'Pluck', {
+}), P(NOTE_RUSH_SOUNDS.pluck.label, 'Pluck', NOTE_RUSH_SOUNDS.pluck.patch), P('Crystal Drops', 'Pluck', {
   a: {
     table: 'digital',
     pos: .55
@@ -1120,3 +1083,48 @@ export const presets = [P('Init Patch', 'Basic', {}), P('Pure Sine', 'Basic', {
     delay: .18
   }
 })];
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+export function validatePatch(raw) {
+  const p = merge(clone(init), raw && typeof raw === 'object' ? raw : {});
+  for (const [key, , min, max] of numericControls) {
+    const a = key.split('.'),
+      k = a.pop(),
+      o = a.reduce((x, y) => x[y], p),
+      v = +o[k];
+    o[k] = Number.isFinite(v) ? clamp(v, min, max) : a.reduce((x, y) => x[y], init)[k];
+  }
+  for (const k of ['a', 'b']) {
+    if (!Object.hasOwn(tables, p[k].table)) p[k].table = 'analog';
+    p[k].on = !!p[k].on;
+    p[k].unison = Math.round(p[k].unison);
+    p[k].oct = Math.round(p[k].oct);
+    p[k].semi = Math.round(p[k].semi);
+    if (!Array.isArray(p[k].custom) || p[k].custom.length !== 128) p[k].custom = defaultWave();else p[k].custom = p[k].custom.map(x => Number.isFinite(+x) ? clamp(+x, -1, 1) : 0);
+  }
+  if (!['lowpass', 'highpass', 'bandpass', 'notch', 'peaking'].includes(p.filter.type)) p.filter.type = 'lowpass';
+  p.filter.on = !!p.filter.on;
+  if (!['sine', 'triangle', 'sawtooth', 'square'].includes(p.lfo.shape)) p.lfo.shape = 'sine';
+  if (!['poly', 'mono'].includes(p.voice.mode)) p.voice.mode = 'poly';
+  return p;
+}
+
+export const USER_PRESETS_KEY = 'form-presets-v1';
+
+export function loadUserPresets() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(USER_PRESETS_KEY) || '[]');
+    if (!Array.isArray(saved)) return [];
+    return saved.flatMap(preset => {
+      if (!preset || typeof preset.name !== 'string' || !preset.patch) return [];
+      try {
+        return [{ name: preset.name.slice(0, 48), cat: 'User', patch: validatePatch(preset.patch) }];
+      } catch {
+        return [];
+      }
+    });
+  } catch {
+    return [];
+  }
+}

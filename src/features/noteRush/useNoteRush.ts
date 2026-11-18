@@ -1,13 +1,17 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { audio } from "../../audio";
+import { PIANO_CUE_SECONDS } from "../../audio/plugins/synth";
 import { PIANO_OCTAVE } from "../../game/stages";
 import { loadJson, saveJson } from "../../lib/storage";
+import { DEFAULT_HOLD_SECONDS, HOLD_CHOICES, loadRushSounds, PIANO_SOUND, TIMED_SOUND_IDS, type RushSound } from "./soundOptions";
 
 export const ROUND_SECONDS = 30;
 const BONUS_SECONDS = 30;
 const WRONG_PENALTY = 2;
 const FEEDBACK_MS = 650;
 const BEST_KEY = "earcade_note_rush_best";
+const PRACTICE_SOUND_KEY = "earcade_note_rush_practice_sound";
+const HOLD_SECONDS_KEY = "earcade_note_rush_hold_seconds";
 const OCTAVE_MIDI = 60;
 
 export function loadNoteRushBest() {
@@ -15,9 +19,11 @@ export function loadNoteRushBest() {
 }
 
 type Feedback = { picked: number; timeDelta: number; nextAt: number };
+export type CuePlayback = { startedAt: number; duration: number };
 type ActiveNote = {
   phase: "active";
   target: number;
+  sound: RushSound;
   feedback?: Feedback;
 };
 type TimedRound = ActiveNote & {
@@ -50,6 +56,11 @@ function pickNote(previous: number | null = null) {
   return index < previous ? index : index + 1;
 }
 
+function loadHoldSeconds() {
+  const saved = loadJson(HOLD_SECONDS_KEY, DEFAULT_HOLD_SECONDS);
+  return HOLD_CHOICES.includes(saved) ? saved : DEFAULT_HOLD_SECONDS;
+}
+
 export function useNoteRush(
   canPlay: boolean,
   onComplete: (score: number, attempts: number) => void,
@@ -58,6 +69,12 @@ export function useNoteRush(
   const currentRound = useRef(round);
   const [seconds, setSeconds] = useState(ROUND_SECONDS);
   const [best, setBest] = useState(loadNoteRushBest);
+  const [sounds] = useState(loadRushSounds);
+  const [holdSeconds, setHoldSeconds] = useState(loadHoldSeconds);
+  const holdRef = useRef(holdSeconds);
+  const practiceSound = useRef<RushSound>();
+  const lastTimedSound = useRef<string>();
+  const [cue, setCue] = useState<CuePlayback>();
   const [starting, setStarting] = useState(false);
   const [audioError, setAudioError] = useState(false);
   const [warmupPress, setWarmupPress] = useState<{ note: number }>();
@@ -71,17 +88,36 @@ export function useNoteRush(
     setRound(next);
   }
 
-  function playNote(note: number) {
+  function stopCue() {
     stopVoice.current?.();
-    stopVoice.current = audio.playUnlocked({
-      type: "note",
-      midi: OCTAVE_MIDI + note,
-      timbre: "piano",
-    }) ?? undefined;
+    stopVoice.current = undefined;
+    setCue(undefined);
+  }
+
+  function playNote(note: number, sound?: RushSound) {
+    stopCue();
+    const midi = OCTAVE_MIDI + note;
+    try {
+      if (sound?.patch) {
+        stopVoice.current = audio.playUnlocked({
+          type: "synth-lab-cue",
+          midi,
+          patch: sound.patch,
+          holdSeconds: holdRef.current,
+          onStart: (startedAt, duration) => setCue({ startedAt, duration }),
+        }) ?? undefined;
+      } else {
+        const startedAt = audio.currentTime;
+        stopVoice.current = audio.playUnlocked({ type: "note", midi, timbre: "piano", at: startedAt }) ?? undefined;
+        if (sound && stopVoice.current) setCue({ startedAt, duration: PIANO_CUE_SECONDS });
+      }
+    } catch {
+      setAudioError(true);
+    }
   }
 
   function finish(active: TimedRound) {
-    stopVoice.current?.();
+    stopCue();
     setSeconds(0);
     const { score, attempts, totalCorrectMs } = active;
     const personalBest = score > best;
@@ -107,7 +143,7 @@ export function useNoteRush(
 
   function nextNote(active: ActiveRound, now: number) {
     const target = pickNote(active.target);
-    playNote(target);
+    playNote(target, active.sound);
     const next = { ...active, target, feedback: undefined };
     update(next.mode === "timed" ? { ...next, playedAt: now } : next);
   }
@@ -149,7 +185,7 @@ export function useNoteRush(
     if (!canPlay) {
       pausedAt.current = performance.now();
       audioRequest.current++;
-      stopVoice.current?.();
+      stopCue();
       startPending.current = false;
       setStarting(false);
       setWarmupPress(undefined);
@@ -206,17 +242,24 @@ export function useNoteRush(
 
     const playedAt = performance.now();
     const target = pickNote();
-    playNote(target);
     if (mode === "endless") {
-      update({ phase: "active", mode, target });
+      const savedSound = loadJson<unknown>(PRACTICE_SOUND_KEY, PIANO_SOUND.id);
+      const sound = practiceSound.current ??= sounds.find(option => option.id === savedSound) ?? PIANO_SOUND;
+      playNote(target, sound);
+      update({ phase: "active", mode, target, sound });
       return;
     }
+    const pool = sounds.filter(sound => TIMED_SOUND_IDS.has(sound.id) && sound.id !== lastTimedSound.current);
+    const sound = pool[Math.floor(Math.random() * pool.length)];
+    lastTimedSound.current = sound.id;
+    playNote(target, sound);
     setSeconds(ROUND_SECONDS);
     update({
       phase: "active",
       mode,
       deadline: playedAt + ROUND_SECONDS * 1000,
       target,
+      sound,
       playedAt,
       score: 0,
       attempts: 0,
@@ -237,7 +280,7 @@ export function useNoteRush(
     if (current.phase === "finished") return;
     if (current.phase === "active" && current.mode === "endless") {
       audioRequest.current++;
-      stopVoice.current?.();
+      stopCue();
       setAudioError(false);
       setSeconds(ROUND_SECONDS);
       update({ phase: "ready" });
@@ -245,6 +288,26 @@ export function useNoteRush(
     }
     if (current.phase === "active" && (current.confirmingExit || performance.now() >= current.deadline)) return;
     return startRound("endless");
+  }
+
+  function changePracticeSound(id: string) {
+    const active = getActiveRound();
+    const sound = sounds.find(option => option.id === id);
+    if (active?.mode !== "endless" || !sound || active.sound === sound) return;
+    practiceSound.current = sound;
+    saveJson(PRACTICE_SOUND_KEY, sound.id);
+    update({ ...active, sound });
+    if (!active.feedback) void replay();
+  }
+
+  function changeHoldSeconds(value: number) {
+    const current = currentRound.current;
+    if (current.phase !== "ready" && (current.phase !== "active" || current.mode !== "endless")) return;
+    if (!HOLD_CHOICES.includes(value) || value === holdRef.current) return;
+    holdRef.current = value;
+    setHoldSeconds(value);
+    saveJson(HOLD_SECONDS_KEY, value);
+    if (current.phase === "active" && !current.feedback) void replay();
   }
 
   async function choose(note: number) {
@@ -266,10 +329,12 @@ export function useNoteRush(
     const active = getActiveRound(now);
     if (!active || active.feedback) return;
     if (active.mode === "endless") {
+      stopCue();
       update({ ...active, feedback: { picked: note, timeDelta: 0, nextAt: now + FEEDBACK_MS } });
       return;
     }
     if (active.confirmingExit) return;
+    stopCue();
     const correct = note === active.target;
     const elapsed = now - active.playedAt;
     const speedBonus = Math.max(0, Math.min(3, 4 - Math.ceil(elapsed / 1000)));
@@ -293,18 +358,18 @@ export function useNoteRush(
   async function replay() {
     const active = getActiveRound();
     if (!active || active.feedback || (active.mode === "timed" && active.confirmingExit)) return;
-    const request = audioRequest.current;
+    const request = ++audioRequest.current;
     const ready = await audio.unlock().catch(() => false);
     if (request !== audioRequest.current || getActiveRound() !== active) return;
     setAudioError(!ready);
-    if (ready) playNote(active.target);
+    if (ready) playNote(active.target, active.sound);
   }
 
   function confirmExit() {
     const now = performance.now();
     const active = getActiveRound(now);
     if (active?.mode !== "timed" || active.confirmingExit || now >= active.deadline) return;
-    stopVoice.current?.();
+    stopCue();
     update({ ...active, confirmingExit: true });
   }
 
@@ -321,5 +386,8 @@ export function useNoteRush(
     }
   }
 
-  return { round, seconds, best, starting, audioError, pressed: warmupPress?.note, start, togglePractice, choose, replay, confirmExit, resume };
+  return {
+    round, seconds, best, sounds, holdSeconds, cue, starting, audioError, pressed: warmupPress?.note,
+    start, togglePractice, changePracticeSound, changeHoldSeconds, choose, replay, confirmExit, resume,
+  };
 }

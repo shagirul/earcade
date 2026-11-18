@@ -2192,6 +2192,12 @@ small,.muted {
   color: var(--accent);
 }
 
+.envelope-behavior {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font: 600 10px/1.4 var(--font-mono);
+}
+
 @media (max-width: 800px) {
   .ctrl label {
     white-space: normal;
