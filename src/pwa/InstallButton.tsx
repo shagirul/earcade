@@ -24,7 +24,7 @@ export function InstallButton() {
       {state !== "installed" && (
         <button type="button" className="install-button" onClick={download} disabled={state === "prompting"} aria-label="Download Earcade">
           <Download size={16} aria-hidden="true" />
-          Download
+          <span>Download</span>
         </button>
       )}
       <dialog className="home-dialog install-dialog" ref={dialog} aria-labelledby="install-title">

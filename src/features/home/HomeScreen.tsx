@@ -3,9 +3,10 @@ import { ArcadeBrand } from "../../ui/arcade/ArcadeBrand";
 import { InstallButton } from "../../pwa/InstallButton";
 import "./home.css";
 
-const previews = [
+const exercises = [
   {
     title: "Intervals",
+    playable: true,
     subtitle: "Hear the distance",
     description: "Compare two notes and identify the musical interval.",
     art: <>
@@ -49,7 +50,7 @@ const previews = [
 const trainingGuide = {
   status: "Training guide",
   title: "How to play",
-  description: "Choose Note Rush, then start a round. Listen to each note and tap the matching piano key. Fast correct answers add up to 3 seconds. A wrong answer costs 2 seconds. Each timed round picks a sound. Tap the timer to choose one in endless practice. Your best score is saved on this device. Rotate to landscape to play.",
+  description: "Choose Note Rush, then start a round. Listen to each note and tap the matching piano key. Fast correct answers add up to 3 seconds. A wrong answer costs 2 seconds. Each timed round picks a sound. Tap the timer to choose one in endless practice. Your best score is saved on this device. In Intervals, listen to the pair and find the second key. Rotate to landscape to play.",
 };
 
 function Chevron() {
@@ -86,17 +87,21 @@ export function HomeScreen({
   best,
   focusPlay,
   onOpenExercise,
+  onOpenIntervals,
 }: {
   best: number;
-  focusPlay: boolean;
+  focusPlay: "notes" | "intervals" | null;
+  onOpenIntervals: () => void;
   onOpenExercise: () => void;
 }) {
   const [preview, setPreview] = useState<typeof trainingGuide | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const playButton = useRef<HTMLButtonElement>(null);
 
+  const intervalButton = useRef<HTMLButtonElement>(null);
+
   useLayoutEffect(() => {
-    if (focusPlay) playButton.current?.focus({ preventScroll: true });
+    if (focusPlay) (focusPlay === "intervals" ? intervalButton : playButton).current?.focus({ preventScroll: true });
   }, [focusPlay]);
 
   useLayoutEffect(() => {
@@ -172,16 +177,17 @@ export function HomeScreen({
       <section className="library" aria-label="More exercises">
         <div className="section-head">
           <h2 className="display section-label">MORE EXERCISES</h2>
-          <span className="meta">04 IN DEVELOPMENT</span>
+          <span className="meta">03 IN DEVELOPMENT</span>
         </div>
         <div className="tile-grid">
-          {previews.map(({ title, subtitle, description, art }, index) => (
+          {exercises.map(({ title, subtitle, description, art, playable }, index) => (
             <button
               key={title}
               type="button"
-              className="exercise-tile"
-              aria-label={title + ", preview"}
-              onClick={() => setPreview({ title, description, status: "Coming soon" })}
+              ref={playable ? intervalButton : undefined}
+              className={"exercise-tile" + (playable ? " playable" : "")}
+              aria-label={playable ? "Play Intervals" : title + ", preview"}
+              onClick={playable ? onOpenIntervals : () => setPreview({ title, description, status: "Coming soon" })}
             >
               <span className="tile-top"><span className="meta">/0{index + 3}</span><Chevron /></span>
               <span className="tile-main">
@@ -193,14 +199,14 @@ export function HomeScreen({
                   <span className="tile-description">{subtitle}</span>
                 </span>
               </span>
-              <span className="tile-foot">Coming soon</span>
+              <span className="tile-foot">{playable ? "Play intervals" : "Coming soon"}</span>
             </button>
           ))}
         </div>
       </section>
 
       <footer className="home-footer">
-        <span className="meta">■ &nbsp; 02 PLAYABLE MODES</span>
+        <span className="meta">■ &nbsp; 03 PLAYABLE MODES</span>
         <button type="button" onClick={onOpenExercise}>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
             <path d="M3 5H21V19H3Z M9 5V19M15 5V19M7 5V12H11V5M13 5V12H17V5" />

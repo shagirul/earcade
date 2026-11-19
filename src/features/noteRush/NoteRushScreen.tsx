@@ -5,7 +5,10 @@ import { PIANO_OCTAVE } from "../../game/stages";
 import { cn } from "../../lib/cn";
 import { Piano } from "../drill/Piano";
 import { HOLD_CHOICES, type RushSound } from "./soundOptions";
-import { ROUND_SECONDS, useNoteRush, type CuePlayback } from "./useNoteRush";
+import { ROUND_SECONDS, useNoteRush, type Exercise } from "./useNoteRush";
+import type { CuePlayback } from "./playCue";
+import { IntervalPiano } from "../intervals/IntervalPiano";
+import { INTERVALS, intervalKeys, pitchName } from "../intervals/intervals";
 import "./noteRush.css";
 
 const SHORTCUTS = ["a", "w", "s", "e", "d", "f", "t", "g", "y", "h", "u", "j"];
@@ -121,12 +124,12 @@ function noteName(note: number) {
   return PIANO_OCTAVE[note].label.replace("#", "♯");
 }
 
-function ReplayButton({ cue, disabled, onClick }: { cue?: CuePlayback; disabled: boolean; onClick: () => void }) {
+function ReplayButton({ cue, disabled, onClick, label }: { label: string; cue?: CuePlayback; disabled: boolean; onClick: () => void }) {
   const progress = useRef<HTMLSpanElement>(null);
 
   useLayoutEffect(() => {
     const fill = progress.current!;
-    fill.style.transform = "scaleX(0)";
+    if (!cue) fill.style.transform = "scaleX(0)";
     fill.dataset.phase = cue ? "playing" : "idle";
     if (!cue) return;
     const { startedAt, duration } = cue;
@@ -139,7 +142,7 @@ function ReplayButton({ cue, disabled, onClick }: { cue?: CuePlayback; disabled:
       else fill.dataset.phase = "complete";
     }
 
-    frame = requestAnimationFrame(draw);
+    draw();
     return () => cancelAnimationFrame(frame);
   }, [cue]);
 
@@ -149,23 +152,27 @@ function ReplayButton({ cue, disabled, onClick }: { cue?: CuePlayback; disabled:
       <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 9h4l5-4v14l-5-4H3zM16 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12" />
       </svg>
-      <span>Play note again</span>
+      <span>{label}</span>
     </button>
   );
 }
 
 export function NoteRushScreen({
+  exercise,
   onExit,
   onComplete,
 }: {
+  exercise: Exercise;
   onExit: () => void;
-  onComplete: (score: number, attempts: number) => void;
+  onComplete: (correctCount: number, attempts: number) => void;
 }) {
+  const intervals = exercise === "intervals";
+  const title = intervals ? "Intervals" : "Note Rush";
   const landscape = useSyncExternalStore(subscribeToOrientation, isLandscapeViewport);
   const {
-    round, seconds, best, sounds, holdSeconds, cue, starting, audioError, pressed,
+    round, seconds, best, sounds, holdSeconds, cue, starting, audioError, pressed, listening,
     start, togglePractice, changePracticeSound, changeHoldSeconds, choose, replay, confirmExit, resume,
-  } = useNoteRush(landscape, onComplete);
+  } = useNoteRush(exercise, landscape, onComplete);
   const soundGroups = useMemo(() => {
     const groups = new Map<string, RushSound[]>();
     for (const sound of sounds) {
@@ -176,10 +183,12 @@ export function NoteRushScreen({
     return Array.from(groups);
   }, [sounds]);
   const active = round.phase === "active" ? round : undefined;
+  const root = active?.root ?? 0;
+  const keys = useMemo(() => intervalKeys(root), [root]);
   const timed = active?.mode === "timed" ? active : undefined;
   const practice = active?.mode === "endless" ? active : undefined;
   const endless = !!practice;
-  const canSetHold = round.phase === "ready" || (practice?.sound.patch?.amp.s ?? 0) > 0;
+  const canSetHold = (!intervals && round.phase === "ready") || (practice?.sound.patch?.amp.s ?? 0) > 0;
   const finished = round.phase === "finished" ? round : undefined;
   const feedback = active?.feedback;
   const correct = !!feedback && feedback.picked === active?.target;
@@ -187,16 +196,27 @@ export function NoteRushScreen({
   const clock = Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
   const startButton = useRef<HTMLButtonElement>(null);
 
-  let eyebrow = "30s challenge · up to 60s";
-  let message = "Hear it. Find it.";
-  let detail = "Listen to a note and tap the matching key.";
+  let eyebrow = intervals ? "30s interval challenge" : "30s challenge · up to 60s";
+  let message: ReactNode = intervals ? "Find the second note." : "Hear it. Find it.";
+  let detail = intervals ? "Watch the reference key, then listen for the distance." : "Listen to a note and tap the matching key.";
   if (active || finished) {
     eyebrow = endless ? "Endless practice" : "Listen and identify";
     if (timed) eyebrow += " · " + timed.sound.label;
     message = "Which note is it?";
     detail = "Tap the matching piano key.";
   }
-  if (feedback && active) {
+  if (intervals && active) {
+    message = listening ? "Listen to the pair." : "Find the second note.";
+    detail = "Reference " + pitchName(root) + " · " + (listening ? "Watch the first key." : "Tap the key you heard second.");
+  }
+  if (intervals && feedback && active) {
+    const distance = active.target - root;
+    const [symbol, name] = INTERVALS[distance];
+    eyebrow = correct ? "Correct" : "Miss";
+    message = <><span className="interval-symbol">{symbol}</span> {name}</>;
+    detail = distance + (distance === 1 ? " semitone" : " semitones") + " · " + pitchName(root) + " → " + pitchName(active.target);
+    if (!correct) detail += " · You picked " + pitchName(feedback.picked);
+  } else if (feedback && active) {
     const target = noteName(active.target);
     eyebrow = "Next note coming";
     message = correct ? "Correct! " + target : "It was " + target;
@@ -226,7 +246,8 @@ export function NoteRushScreen({
         void replay();
         return;
       }
-      const note = SHORTCUTS.indexOf(event.key.toLowerCase());
+      const shortcut = event.key.toLowerCase();
+      const note = intervals ? keys.find(key => key.shortcut === shortcut)?.offset ?? -1 : SHORTCUTS.indexOf(shortcut);
       if (note !== -1) {
         event.preventDefault();
         void choose(note);
@@ -235,14 +256,14 @@ export function NoteRushScreen({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [landscape, active, timed, finished, choose, replay, confirmExit, onExit]);
+  }, [landscape, active, timed, finished, choose, replay, confirmExit, onExit, intervals, keys]);
 
   if (!landscape) {
     return (
       <main className="rotate-screen">
         <div className="panel rotate-panel">
           <Smartphone aria-hidden="true" className="rotate-symbol" size={38} />
-          <p className="eyebrow">EARCADE / NOTE RUSH</p>
+          <p className="eyebrow">EARCADE / {title}</p>
           <h1 className="display">Rotate to landscape</h1>
           <p className="detail">Turn your device sideways to {active ? "resume the round" : "play"}.</p>
           <button type="button" className="secondary" onClick={onExit}>Back to exercises</button>
@@ -253,7 +274,7 @@ export function NoteRushScreen({
 
   return (
     <div className="game-shell">
-      <main className="app" aria-label="Earcade note guessing game">
+      <main className="app" aria-label={intervals ? "Earcade interval game" : "Earcade note guessing game"}>
         <header className="top">
           <div className="rush-heading">
             <button
@@ -267,7 +288,7 @@ export function NoteRushScreen({
                 <path d="m14 5-7 7 7 7M7 12h14" />
               </svg>
             </button>
-            <div className="display rush-title">Note Rush</div>
+            <div className="display rush-title">{title}</div>
           </div>
           <div className="stats">
             {practice && (
@@ -292,7 +313,7 @@ export function NoteRushScreen({
                 </select>
               </label>
             )}
-            {!endless && <RoundCounter label="Score" value={timed?.score ?? finished?.score ?? 0} delta={Number(correct)} attempt={answeredAttempt} />}
+            {!endless && <RoundCounter label="Score" value={timed?.score ?? finished?.score ?? 0} delta={feedback?.scoreDelta} attempt={answeredAttempt} />}
             <RoundCounter
               label={endless ? "Endless" : "Time left"}
               value={endless ? "∞" : clock}
@@ -312,15 +333,15 @@ export function NoteRushScreen({
           <div className="prompt-copy">
             <p className="eyebrow">{eyebrow}</p>
             <div role="status" aria-atomic="true">
-              <p className={cn("message", feedback && (correct ? "good" : "bad"))}>{message}</p>
+              <p className={cn("message", intervals && feedback && "interval-answer", feedback && (correct ? "good" : "bad"))}>{message}</p>
               <p className="detail">{detail}</p>
-              {correct && timed && <span className="sr">+1 point.</span>}
+              {timed && feedback && feedback.scoreDelta !== 0 && <span className="sr">{feedback.scoreDelta > 0 ? "+" : ""}{feedback.scoreDelta} points.</span>}
             </div>
             {audioError && !finished && <p role="alert" className="detail bad">{AUDIO_ERROR}</p>}
           </div>
           <div className="controls">
             {active || finished ? (
-              <ReplayButton cue={cue} disabled={!!feedback || !!finished} onClick={replay} />
+              <ReplayButton label={intervals ? "Play pair again" : "Play note again"} cue={cue} disabled={!!feedback || !!finished} onClick={replay} />
             ) : (
               <button type="button" className="primary" ref={startButton} disabled={starting} onClick={start}>
                 <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
@@ -332,18 +353,21 @@ export function NoteRushScreen({
           </div>
         </section>
 
-        <Piano onPress={choose} disabled={starting || !!feedback || !!finished} correct={active?.target} picked={feedback?.picked} pressed={pressed} showFeedback={!!feedback} />
+        {intervals ? (
+          <IntervalPiano keys={keys} onPress={choose} disabled={starting || listening || !!feedback || !!finished}
+            pressed={pressed} picked={feedback?.picked} target={active?.target} />
+        ) : <Piano onPress={choose} disabled={starting || !!feedback || !!finished} correct={active?.target} picked={feedback?.picked} pressed={pressed} showFeedback={!!feedback} />}
 
         <footer className="foot">
           {endless ? <span>Tap ∞ for timed play</span> : <span>
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="m13 2-9 12h7l-1 8 10-12h-7z" />
             </svg>
-            Fast +1–3s · Miss −2s
+            {intervals ? "Hit +1 · Within 2s +2 total · Miss −1" : "Fast +1–3s · Miss −2s"}
           </span>}
           {correct && !!feedback?.timeDelta && <span className="bonus" aria-hidden="true">+{feedback.timeDelta}s</span>}
           <span>
-            {active || finished ? "One guess per note" : <>Tap keys to warm up <span className="desktop-hint">· A–J + W/E/T/Y/U</span></>}
+            {intervals ? (active || finished ? "One guess per pair" : "Tap keys to warm up") : active || finished ? "One guess per note" : <>Tap keys to warm up <span className="desktop-hint">· A–J + W/E/T/Y/U</span></>}
           </span>
         </footer>
 
@@ -363,10 +387,10 @@ export function NoteRushScreen({
             <p className="eyebrow">{finished.personalBest ? "New personal best!" : "Round complete"}</p>
             <h1 id="round-dialog-title">Time's up!</h1>
             <div className="score-big">{finished.score}</div>
-            <p className="result-note">{finished.score === 1 ? "Correct note" : "Correct notes"}</p>
+            <p className="result-note">{intervals ? (finished.score === 1 ? "Point" : "Points") : finished.score === 1 ? "Correct note" : "Correct notes"}</p>
             <div className="result-metrics">
-              <ResultMetric label="Accuracy" value={finished.attempts ? Math.round(finished.score / finished.attempts * 100) + "%" : "—"} />
-              <ResultMetric label="Avg. correct time" value={finished.score ? (finished.totalCorrectMs / finished.score / 1000).toFixed(1) + "s" : "—"} />
+              <ResultMetric label="Accuracy" value={finished.attempts ? Math.round(finished.correctCount / finished.attempts * 100) + "%" : "—"} />
+              <ResultMetric label="Avg. correct time" value={finished.correctCount ? (finished.totalCorrectMs / finished.correctCount / 1000).toFixed(1) + "s" : "—"} />
               <ResultMetric label="Personal best" value={best} />
             </div>
             {audioError && <p role="alert" className="detail bad">{AUDIO_ERROR}</p>}

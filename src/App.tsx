@@ -1,39 +1,41 @@
 import { useCallback, useRef, useState } from "react";
 import { HomeScreen } from "./features/home/HomeScreen";
 import { NoteRushScreen } from "./features/noteRush/NoteRushScreen";
-import { loadNoteRushBest } from "./features/noteRush/useNoteRush";
+import { loadNoteRushBest, type Exercise } from "./features/noteRush/useNoteRush";
 import { calcXp } from "./game/scoring";
 import { useUserProgress } from "./state/userProgress";
 
 export default function App() {
-  const [showExercise, setShowExercise] = useState(false);
-  const returningHome = useRef(false);
+  const [exercise, setExercise] = useState<Exercise | null>(null);
+  const returningHome = useRef<Exercise | null>(null);
   const { dispatch } = useUserProgress();
-  const completeRound = useCallback((score: number, attempts: number) => {
+  const completeRound = useCallback((correctCount: number, attempts: number) => {
     if (attempts === 0) return;
-    dispatch({ type: "GAIN_XP", xp: calcXp(score / attempts) });
+    dispatch({ type: "GAIN_XP", xp: calcXp(correctCount / attempts) });
     dispatch({ type: "INC_STREAK" });
   }, [dispatch]);
 
-  function navigate(toExercise: boolean) {
-    returningHome.current = !toExercise;
-    setShowExercise(toExercise);
+  function navigate(next: Exercise | null) {
+    if (!next) returningHome.current = exercise;
+    setExercise(next);
     window.scrollTo(0, 0);
   }
 
-  if (!showExercise) {
+  if (!exercise) {
     return (
       <HomeScreen
         best={loadNoteRushBest()}
         focusPlay={returningHome.current}
-        onOpenExercise={() => navigate(true)}
+        onOpenExercise={() => navigate("notes")}
+        onOpenIntervals={() => navigate("intervals")}
       />
     );
   }
 
   return (
     <NoteRushScreen
-      onExit={() => navigate(false)}
+      exercise={exercise}
+      onExit={() => navigate(null)}
       onComplete={completeRound}
     />
   );

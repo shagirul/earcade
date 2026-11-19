@@ -13,6 +13,9 @@
 }
 
 .home-header {
+  --brand-name-size: 36px;
+  --brand-sub-size: 10px;
+  --brand-line-gap: 3px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -21,16 +24,20 @@
 }
 
 .home-header .brand-name {
-  font-size: 36px;
+  font-size: var(--brand-name-size);
 }
 
 .home-header .brand-sub {
-  font-size: 10px;
+  font-size: var(--brand-sub-size);
+  line-height: 1;
+  margin-top: var(--brand-line-gap);
 }
 
 .home-header .brand-icon {
-  width: 36px;
-  height: 36px;
+  width: auto;
+  height: calc(var(--brand-name-size) + var(--brand-sub-size) + var(--brand-line-gap));
+  background: transparent;
+  clip-path: none;
 }
 
 .home-intro {
@@ -535,9 +542,25 @@
 .install-dialog { margin: auto; }
 .install-dialog .primary { width: 100%; margin-bottom: var(--s-2); }
 
-@media (max-width: 390px) {
-  .home-header .brand-name { font-size: 28px; }
-  .home-header .brand-sub { font-size: 8px; }
+@media (max-width: 414px) {
+  .home-header {
+    --brand-name-size: 28px;
+    --brand-sub-size: 8px;
+  }
   .home-actions { gap: 4px; }
   .install-button { padding: 0 6px; }
 }
+
+@media (max-width: 365px) {
+  .install-button {
+    width: var(--touch);
+    justify-content: center;
+  }
+
+  .install-button span {
+    display: none;
+  }
+}
+
+.exercise-tile.playable { border-color: var(--amber-700); }
+.playable .tile-art, .playable .tile-foot { color: var(--accent); }
